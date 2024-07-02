@@ -1,0 +1,5 @@
+#ifndef S0M4B0DY_TYPE_TRAITS_HPP
+#define S0M4B0DY_TYPE_TRAITS_HPP
+
+
+#endif
