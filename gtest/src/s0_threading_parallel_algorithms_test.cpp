@@ -79,3 +79,63 @@ TEST(countIf, alwaysTrueTest)
     auto result = threading.count_if(arr.begin(), arr.end(), searchLambda);
     ASSERT_EQ(result, arr.size());
 }
+
+TEST(transform, increaseBy500)
+{
+    auto range = std::ranges::views::iota(0, 500);
+    std::vector<int> arr(range.begin(), range.end());
+    std::vector<int> outputArr;
+    std::vector<int> expectedArr;
+    auto increaseBy500 = [](auto value){return value+500;};
+    std::transform(arr.begin(), arr.end(), std::back_inserter(expectedArr), increaseBy500);
+    s0m4b0dY::Threading threading;
+    int initValue = 200;
+    threading.transform(arr.begin(), arr.end(), std::back_inserter(outputArr), increaseBy500);
+    auto result = std::equal(outputArr.begin(), outputArr.end(), expectedArr.begin(), expectedArr.end());
+    ASSERT_TRUE(result);
+}
+
+TEST(transformNonBackInserter, increaseBy500)
+{
+    auto range = std::ranges::views::iota(0, 500);
+    std::vector<int> arr(range.begin(), range.end());
+    std::vector<int> outputArr(arr.size(), 0);
+    std::vector<int> expectedArr;
+    auto increaseBy500 = [](auto value){return value+500;};
+    std::transform(arr.begin(), arr.end(), std::back_inserter(expectedArr), increaseBy500);
+    s0m4b0dY::Threading threading;
+    int initValue = 200;
+    threading.transform_non_back_inserter(arr.begin(), arr.end(), outputArr.begin(), increaseBy500);
+    auto result = std::equal(outputArr.begin(), outputArr.end(), expectedArr.begin(), expectedArr.end());
+    ASSERT_TRUE(result);
+}
+
+TEST(transformSecondOverload_adder, increaseBy500)
+{
+    auto range1 = std::ranges::views::iota(0, 500);
+    auto range2 = std::ranges::views::iota(500, 1000);
+    std::vector<int> arr1(range1.begin(), range1.end());
+    std::vector<int> arr2(range2.begin(), range2.end());
+    std::vector<int> outputArr;
+    std::vector<int> expectedArr;
+    std::transform(arr1.begin(), arr1.end(), arr2.begin(), std::back_inserter(expectedArr), std::plus());
+    s0m4b0dY::Threading threading;
+    threading.transform(arr1.begin(), arr1.end(), arr2.begin(), std::back_inserter(outputArr), std::plus());
+    auto result = std::equal(outputArr.begin(), outputArr.end(), outputArr.begin(), outputArr.end());
+    ASSERT_TRUE(result);
+}
+
+TEST(transformSecondOverloadNonBackInserter, increaseBy500)
+{
+    auto range1 = std::ranges::views::iota(0, 500);
+    auto range2 = std::ranges::views::iota(500, 1000);
+    std::vector<int> arr1(range1.begin(), range1.end());
+    std::vector<int> arr2(range2.begin(), range2.end());
+    std::vector<int> outputArr(arr1.size());
+    std::vector<int> expectedArr;
+    std::transform(arr1.begin(), arr1.end(), arr2.begin(), std::back_inserter(expectedArr), std::plus());
+    s0m4b0dY::Threading threading;
+    threading.transform_non_back_inserter(arr1.begin(), arr1.end(), arr2.begin(), outputArr.begin(), std::plus());
+    auto result = std::equal(outputArr.begin(), outputArr.end(), outputArr.begin(), outputArr.end());
+    ASSERT_TRUE(result);
+}
