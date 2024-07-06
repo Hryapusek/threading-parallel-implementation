@@ -6,7 +6,7 @@
 
 #include "s0_parallel_algorithms_threading.hpp"
 
-TEST(reduceParallelAlgorithm, VectorOf500Elements)
+TEST(reduce, VectorOf500Elements)
 {
     auto range = std::ranges::views::iota(0, 500);
     std::vector<int> arr(range.begin(), range.end());
@@ -15,7 +15,7 @@ TEST(reduceParallelAlgorithm, VectorOf500Elements)
     ASSERT_EQ(result, std::reduce(arr.begin(), arr.end()));
 }
 
-TEST(reduceParallelAlgorithm, VectorOf500ElementsInitValuePassed)
+TEST(reduce, VectorOf500ElementsInitValuePassed)
 {
     auto range = std::ranges::views::iota(0, 500);
     std::vector<int> arr(range.begin(), range.end());
@@ -25,24 +25,57 @@ TEST(reduceParallelAlgorithm, VectorOf500ElementsInitValuePassed)
     ASSERT_EQ(result, initValue + std::reduce(arr.begin(), arr.end()));
 }
 
-TEST(findIfParallelAlgorithm, SearchWithLambda)
+TEST(findIf, SearchWithLambda)
 {
     auto range = std::ranges::views::iota(0, 500);
     std::vector<int> arr(range.begin(), range.end());
-    s0m4b0dY::Threading openMPI;
+    s0m4b0dY::Threading threading;
     int initValue = 200;
     constexpr int searchValue = 420;
-    auto result = openMPI.find_if(arr.begin(), arr.end(), [](int value){return value == searchValue;});
+    auto result = threading.find_if(arr.begin(), arr.end(), [](int value){return value == searchValue;});
     ASSERT_NE(result, arr.end());
     ASSERT_EQ(*result, searchValue);
 }
 
-TEST(findIfParallelAlgorithm, SearchWithLambdaNonExistValue)
+TEST(findIf, SearchWithLambdaNonExistValue)
 {
     auto range = std::ranges::views::iota(0, 500);
     std::vector<int> arr(range.begin(), range.end());
-    s0m4b0dY::Threading openMPI;
+    s0m4b0dY::Threading threading;
     int initValue = 200;
-    auto result = openMPI.find_if(arr.begin(), arr.end(), [](int value){return false;});
+    auto result = threading.find_if(arr.begin(), arr.end(), [](int value){return false;});
     ASSERT_EQ(result, arr.end());
+}
+
+TEST(countIf, valueLess250Test)
+{
+    auto range = std::ranges::views::iota(0, 500);
+    std::vector<int> arr(range.begin(), range.end());
+    s0m4b0dY::Threading threading;
+    int initValue = 200;
+    auto searchLambda = [](int value){return value < 250;};
+    auto result = threading.count_if(arr.begin(), arr.end(), searchLambda);
+    ASSERT_EQ(result, std::count_if(arr.begin(), arr.end(), searchLambda));
+}
+
+TEST(countIf, alwaysFalseTest)
+{
+    auto range = std::ranges::views::iota(0, 500);
+    std::vector<int> arr(range.begin(), range.end());
+    s0m4b0dY::Threading threading;
+    int initValue = 200;
+    auto searchLambda = [](int value){return false;};
+    auto result = threading.count_if(arr.begin(), arr.end(), searchLambda);
+    ASSERT_EQ(result, 0);
+}
+
+TEST(countIf, alwaysTrueTest)
+{
+    auto range = std::ranges::views::iota(0, 500);
+    std::vector<int> arr(range.begin(), range.end());
+    s0m4b0dY::Threading threading;
+    int initValue = 200;
+    auto searchLambda = [](int value){return true;};
+    auto result = threading.count_if(arr.begin(), arr.end(), searchLambda);
+    ASSERT_EQ(result, arr.size());
 }

@@ -28,24 +28,61 @@ public:
 	template <class Iterator_t, _helpers::Predicate<typename IteratorValueType<Iterator_t>::value_type> Predicate>
 	long long count_if(Iterator_t begin, Iterator_t end, Predicate &&unaryFunction);
 
-	template <class InputIterator_t, class OutputIterator_t, class UnaryFunction,
-	          class = std::enable_if_t<std::is_convertible_v<decltype(std::declval<UnaryFunction>()(std::declval<IteratorValueType<InputIterator_t>::value_type>())), typename IteratorValueType<OutputIterator_t>::value_type> > >
-	void transform(InputIterator_t begin, InputIterator_t end, OutputIterator_t output, UnaryFunction &&unaryFunction);
+	template <class InputIterator_t, class OutputIterator_t, class UnaryFunction, 
+              class = std::enable_if_t<
+                          std::is_assignable_v<
+                              decltype(*std::declval<OutputIterator_t>()), 
+                              decltype(std::declval<UnaryFunction>()(
+                                  std::declval<typename IteratorValueType<InputIterator_t>::value_type>()
+                                      ))
+                                              >
+                                      >
+              >
+    void transform(InputIterator_t begin, InputIterator_t end, OutputIterator_t output, UnaryFunction &&unaryFunction);
 
-	template <class InputIterator1_t, class InputIterator2_t, class OutputIterator_t, class BinaryFunction,
-	          class = std::enable_if_t<
-				  std::is_convertible_v<
-					  decltype(std::declval<BinaryFunction>()
-							   (
-								   std::declval<IteratorValueType<InputIterator1_t>::value_type>(),
-								   std::declval<IteratorValueType<InputIterator2_t>::value_type>()
-					           )
-					           ),
-					  typename IteratorValueType<OutputIterator_t>::value_type
-					  >
-				  >
-	          >
-	void transform(InputIterator1_t begin1, InputIterator1_t end1, InputIterator2_t begin2, OutputIterator_t output, BinaryFunction &&unaryFunction);
+    /**
+     * @note You should not use it if OutputIterator_t is back_inserter.
+     */
+    template <class InputIterator_t, class OutputIterator_t, class UnaryFunction, 
+              class = std::enable_if_t<
+                          std::is_assignable_v<
+                              decltype(*std::declval<OutputIterator_t>()), 
+                              decltype(std::declval<UnaryFunction>()(
+                                  std::declval<typename IteratorValueType<InputIterator_t>::value_type>()
+                                      ))
+                                              >
+                                      >
+              >
+    void transform_non_back_inserter(InputIterator_t begin, InputIterator_t end, OutputIterator_t output, UnaryFunction &&unaryFunction);
+    
+    template <class InputIterator1_t, class InputIterator2_t, class OutputIterator_t, class BinaryFunction,
+    class = std::enable_if_t<
+                          std::is_assignable_v<
+                              decltype(*std::declval<OutputIterator_t>()), 
+                              decltype(std::declval<BinaryFunction>()(
+                                  std::declval<typename IteratorValueType<InputIterator1_t>::value_type>(),
+                                  std::declval<typename IteratorValueType<InputIterator2_t>::value_type>()
+                                      ))
+                                              >
+                                      >
+              >
+    void transform(InputIterator1_t begin1, InputIterator1_t end1, InputIterator2_t begin2, OutputIterator_t output, BinaryFunction &&binaryFunction);
+
+    /**
+     * @note You should not use it if OutputIterator_t is back_inserter.
+     */
+    template <class InputIterator1_t, class InputIterator2_t, class OutputIterator_t, class BinaryFunction,
+    class = std::enable_if_t<
+                          std::is_assignable_v<
+                              decltype(*std::declval<OutputIterator_t>()), 
+                              decltype(std::declval<BinaryFunction>()(
+                                  std::declval<typename IteratorValueType<InputIterator1_t>::value_type>(),
+                                  std::declval<typename IteratorValueType<InputIterator2_t>::value_type>()
+                                      ))
+                                              >
+                                      >
+              >
+    void transform_non_back_inserter(InputIterator1_t begin1, InputIterator1_t end1, InputIterator2_t begin2, OutputIterator_t output, BinaryFunction &&binaryFunction);
 };
 
 template <_helpers::AddableIterator Iterator_t>
@@ -132,33 +169,25 @@ inline Iterator_t Threading::find_if(Iterator_t begin, Iterator_t end, Predicate
 	std::vector<std::pair<Iterator_t, Iterator_t> > ranges = generateRanges(begin, end, std::thread::hardware_concurrency());
 	std::vector<std::future<std::optional<Iterator_t> > > results;
 	std::atomic_bool found = false;
-	try
+	for (auto i = 0; i < ranges.size(); ++i)
 	{
-	  #pragma omp parallel for
-		for (auto i = 0; i < ranges.size(); ++i)
-		{
-			const auto &range = ranges[i];
-			results.push_back(std::async(
-				[&range=range, &found, unaryFunction]() -> std::optional<Iterator_t>
+		const auto &range = ranges[i];
+		results.push_back(std::async(
+							  [&range=range, &found, unaryFunction]() -> std::optional<Iterator_t>
+			{
+				for (auto it = range.first; it != range.second; it++)
 				{
-					for (auto it = range.first; it != range.second; it++)
+					if (found)
+						break;
+					if (unaryFunction(*it))
 					{
-						if (found)
-							break;
-						if (unaryFunction(*it))
-						{
-							found = true;
-							return it;
-						}
+						found = true;
+						return it;
 					}
-					return std::nullopt;
 				}
-				));
-		}
-	}
-	catch(const std::exception &e)
-	{
-		throw;
+				return std::nullopt;
+			}
+							  ));
 	}
 	for (std::future<std::optional<Iterator_t> > &localResult : results)
 	{
@@ -167,6 +196,35 @@ inline Iterator_t Threading::find_if(Iterator_t begin, Iterator_t end, Predicate
 			return std::move(optional).value();
 	}
 	return end;
+
+}
+template <class Iterator_t, _helpers::Predicate<typename _helpers::IteratorValueType<Iterator_t>::value_type> Predicate>
+inline long long Threading::count_if(Iterator_t begin, Iterator_t end, Predicate &&unaryFunction)
+{
+	using Count_t = long long;
+	using value_type = _helpers::IteratorValueType<Iterator_t>::value_type;
+	std::vector<std::pair<Iterator_t, Iterator_t> > ranges = generateRanges(begin, end, std::thread::hardware_concurrency());
+	std::vector<std::future<Count_t>> results;
+	for (auto i = 0; i < ranges.size(); ++i)
+	{
+		const auto &range = ranges[i];
+		results.push_back(std::async(
+		[&range=range, unaryFunction]()
+		{
+			Count_t count = 0;
+			for (auto it = range.first; it != range.second; it++)
+			{
+				if (unaryFunction(*it))
+					count++;
+			}
+			return count;
+		}
+		));
+	}
+	Count_t count = 0;
+	for (auto &localResult : results)
+		count += localResult.get();
+	return count;
 }
 } // namespace s0m4b0dY
 
