@@ -110,7 +110,7 @@ TEST(transformNonBackInserter, increaseBy500)
     ASSERT_TRUE(result);
 }
 
-TEST(transformSecondOverload_adder, increaseBy500)
+TEST(transformSecondOverload_adder, plus)
 {
     auto range1 = std::ranges::views::iota(0, 500);
     auto range2 = std::ranges::views::iota(500, 1000);
@@ -125,7 +125,7 @@ TEST(transformSecondOverload_adder, increaseBy500)
     ASSERT_TRUE(result);
 }
 
-TEST(transformSecondOverloadNonBackInserter, increaseBy500)
+TEST(transformSecondOverloadNonBackInserter, plus)
 {
     auto range1 = std::ranges::views::iota(0, 500);
     auto range2 = std::ranges::views::iota(500, 1000);
