@@ -86,15 +86,15 @@ public:
 	          >
 	void transform_non_back_inserter(InputIterator1_t begin1, InputIterator1_t end1, InputIterator2_t begin2, OutputIterator_t output, BinaryFunction &&binaryFunction);
 
-	template < std::forward_iterator InputIterator_t, class HashFunction = std::hash<::_helpers::IteratorValueType_t<InputIterator_t> >, class Comparator = std::less<::_helpers::IteratorValueType_t<InputIterator_t> > >
+	template < std::forward_iterator InputIterator_t, class HashFunction = std::hash<::_helpers::IteratorValueType_t<InputIterator_t> >, class Comparator = std::less_equal<::_helpers::IteratorValueType_t<InputIterator_t> > >
 	void bitonic_sort(InputIterator_t begin, InputIterator_t end, HashFunction hashFunction = HashFunction(), Comparator comparator = Comparator());
 
-	template < std::forward_iterator InputIterator_t, class HashFunction = std::hash<::_helpers::IteratorValueType_t<InputIterator_t> >, class Comparator = std::less<::_helpers::IteratorValueType_t<InputIterator_t> > >
+	template < std::forward_iterator InputIterator_t, class HashFunction = std::hash<::_helpers::IteratorValueType_t<InputIterator_t> >, class Comparator = std::less_equal<::_helpers::IteratorValueType_t<InputIterator_t> > >
 	void odd_even_sort(InputIterator_t begin, InputIterator_t end, HashFunction hashFunction = HashFunction(), Comparator comparator = Comparator());
 
 private:
 	template<class Hash_t, class Value_t, class Comparator>
-	void bitonic_merge(std::vector<Hash_t>& hashValues, std::unordered_map<Hash_t, Value_t*>& hashTable, std::vector<Hash_t>::size_type low, std::vector<Hash_t>::size_type cnt, Comparator comparator, ThreadPool& pool);
+	void bitonic_merge(std::vector<Hash_t>& hashValues, std::unordered_multimap<Hash_t, Value_t*>& hashTable, std::vector<Hash_t>::size_type low, std::vector<Hash_t>::size_type cnt, Comparator comparator, ThreadPool& pool);
 
 };
 
@@ -397,17 +397,17 @@ inline void Threading::bitonic_sort(InputIterator_t begin, InputIterator_t end, 
 	auto [hashValues, hashTable] = hash_sequence< InputIterator_t, hash_t, value_type >(begin, end, hashFunction, comparator);
 
 	// Sort first half in ascending order
-	std::sort(std::execution::par_unseq, hashValues.begin(), hashValues.begin() + length,
+	std::sort(std::execution::par_unseq, hashValues.begin(), hashValues.begin() + length / 2,
 	          [&hashTable, &comparator](hash_t lhs, hash_t rhs)
 		{
-			return comparator(*hashTable[lhs], *hashTable[rhs]);
+			return comparator(*hashTable.find(lhs)->second, *hashTable.find(rhs)->second);
 		});
 
 	// Sort second half in descending order
-	std::sort(std::execution::par_unseq, hashValues.begin() + length, hashValues.end(),
+	std::sort(std::execution::par_unseq, hashValues.begin() + length / 2, hashValues.end(),
 	          [&hashTable, &comparator](hash_t lhs, hash_t rhs)
 		{
-			return not comparator(*hashTable[lhs], *hashTable[rhs]);
+			return not comparator(*hashTable.find(lhs)->second, *hashTable.find(rhs)->second);
 		});
 
 	{
@@ -420,7 +420,7 @@ inline void Threading::bitonic_sort(InputIterator_t begin, InputIterator_t end, 
 
 template<class Hash_t, class Value_t, class Comparator>
 inline void Threading::bitonic_merge(std::vector<Hash_t>& hashValues,
-                                     std::unordered_map<Hash_t, Value_t*>& hashTable,
+                                     std::unordered_multimap<Hash_t, Value_t*>& hashTable,
                                      std::vector<Hash_t>::size_type low,
                                      std::vector<Hash_t>::size_type cnt,
                                      Comparator comparator,
