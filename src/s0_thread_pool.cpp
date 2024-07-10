@@ -2,9 +2,12 @@
 
 s0m4b0dY::ThreadPool::ThreadPool(int nThreads)
 {
-    work_threads_.emplace_back(
-        workFunction, std::ref(tasks_)
-    );
+    for (auto i = 0; i < nThreads; i++)
+    {
+        work_threads_.emplace_back(
+            workFunction, std::ref(tasks_)
+        );
+    }
 }
 
 s0m4b0dY::ThreadPool::~ThreadPool()
