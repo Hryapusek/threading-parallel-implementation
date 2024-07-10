@@ -93,8 +93,8 @@ public:
 	void odd_even_sort(InputIterator_t begin, InputIterator_t end, HashFunction hashFunction = HashFunction(), Comparator comparator = Comparator());
 
 private:
-	template < class Hash_t, class Value_t, class Comparator >
-	void bitonic_merge(std::vector<Hash_t> &hashValues, std::unordered_map<Hash_t, Value_t *> &hashTable, std::vector<Hash_t>::size_type low, std::vector<Hash_t>::size_type cnt, Comparator comparator);
+	template<class Hash_t, class Value_t, class Comparator>
+	void bitonic_merge(std::vector<Hash_t>& hashValues, std::unordered_map<Hash_t, Value_t*>& hashTable, std::vector<Hash_t>::size_type low, std::vector<Hash_t>::size_type cnt, Comparator comparator, ThreadPool& pool);
 
 };
 
@@ -410,32 +410,52 @@ inline void Threading::bitonic_sort(InputIterator_t begin, InputIterator_t end, 
 			return not comparator(*hashTable[lhs], *hashTable[rhs]);
 		});
 
-	bitonic_merge(hashValues, hashTable, 0, hashValues.size(), comparator);
+	{
+		ThreadPool pool(12);
+		bitonic_merge(hashValues, hashTable, 0, hashValues.size(), comparator, pool);
+	}
 
 	placeElementsInCorrectPositions(begin, end, hashFunction, hashValues, hashTable);
 }
 
 template<class Hash_t, class Value_t, class Comparator>
 inline void Threading::bitonic_merge(std::vector<Hash_t>& hashValues,
-                                     std::unordered_map<Hash_t, Value_t *>& hashTable,
+                                     std::unordered_map<Hash_t, Value_t*>& hashTable,
                                      std::vector<Hash_t>::size_type low,
                                      std::vector<Hash_t>::size_type cnt,
-                                     Comparator comparator)
+                                     Comparator comparator,
+                                     ThreadPool& pool)
 {
-	if (cnt <= 1)
-		return;
-	auto k = cnt / 2;
-	auto inplaceComparator = createInplaceComparator(comparator, hashTable);
-	std::vector<std::future<void> > results;
-	results.reserve(k);
-	for (auto i = low; i < low + k; i++)
-	{
-		results.push_back(std::async([&inplaceComparator, &hashValues, i, k](){inplaceComparator(hashValues[i], hashValues[i + k]);}));
-	}
-	for (auto &result : results)
-		result.get();
-	bitonic_merge(hashValues, hashTable, low, k, comparator);
-	bitonic_merge(hashValues, hashTable, low + k, k, comparator);
+    if (cnt <= 1)
+        return;
+
+    auto k = cnt / 2;
+    auto inplaceComparator = createInplaceComparator(comparator, hashTable);
+
+    size_t numThreads = std::thread::hardware_concurrency();
+    size_t chunkSize = (k + numThreads - 1) / numThreads;
+
+    std::vector<std::future<void>> results;
+    results.reserve(numThreads);
+
+    for (size_t chunkStart = low; chunkStart < low + k; chunkStart += chunkSize)
+    {
+        results.push_back(pool.submit([chunkStart, chunkSize, &hashValues, k, &inplaceComparator, low]()
+        {
+            for (size_t i = chunkStart; i < std::min(chunkStart + chunkSize, low + k); ++i)
+            {
+                inplaceComparator(hashValues[i], hashValues[i + k]);
+            }
+        }));
+    }
+
+    for (auto& result : results)
+    {
+        result.get();
+    }
+
+    bitonic_merge(hashValues, hashTable, low, k, comparator, pool);
+    bitonic_merge(hashValues, hashTable, low + k, k, comparator, pool);
 }
 
 template <std::forward_iterator InputIterator_t, class HashFunction, class Comparator>
