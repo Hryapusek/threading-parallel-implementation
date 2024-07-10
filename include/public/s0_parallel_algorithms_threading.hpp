@@ -5,9 +5,11 @@
 #include <vector>
 #include <thread>
 #include <future>
+#include <execution>
 
 #include "CommonUtils/s0_type_traits.hpp"
 #include "CommonUtils/s0_utils.hpp"
+#include "s0_thread_pool.hpp"
 
 namespace s0m4b0dY
 {
@@ -83,6 +85,17 @@ public:
 				  >
 	          >
 	void transform_non_back_inserter(InputIterator1_t begin1, InputIterator1_t end1, InputIterator2_t begin2, OutputIterator_t output, BinaryFunction &&binaryFunction);
+
+	template < std::forward_iterator InputIterator_t, class HashFunction = std::hash<::_helpers::IteratorValueType_t<InputIterator_t> >, class Comparator = std::less<::_helpers::IteratorValueType_t<InputIterator_t> > >
+	void bitonic_sort(InputIterator_t begin, InputIterator_t end, HashFunction hashFunction = HashFunction(), Comparator comparator = Comparator());
+
+	template < std::forward_iterator InputIterator_t, class HashFunction = std::hash<::_helpers::IteratorValueType_t<InputIterator_t> >, class Comparator = std::less<::_helpers::IteratorValueType_t<InputIterator_t> > >
+	void odd_even_sort(InputIterator_t begin, InputIterator_t end, HashFunction hashFunction = HashFunction(), Comparator comparator = Comparator());
+
+private:
+	template < class Hash_t, class Value_t, class Comparator >
+	void bitonic_merge(std::vector<Hash_t> &hashValues, std::unordered_map<Hash_t, Value_t *> &hashTable, std::vector<Hash_t>::size_type low, std::vector<Hash_t>::size_type cnt, Comparator comparator);
+
 };
 
 template <_helpers::AddableIterator Iterator_t>
@@ -320,7 +333,7 @@ inline void Threading::transform(InputIterator1_t begin1, InputIterator1_t end1,
 					{
 						localResult.push_back(binaryFunction(*it, *localBegin2));
 					}
-          return localResult;
+					return localResult;
 				}));
 		}
 	}
@@ -372,6 +385,130 @@ inline void Threading::transform_non_back_inserter(InputIterator1_t begin1, Inpu
 	}
 }
 
+template<std::forward_iterator InputIterator_t, class HashFunction, class Comparator>
+inline void Threading::bitonic_sort(InputIterator_t begin, InputIterator_t end, HashFunction hashFunction, Comparator comparator)
+{
+	using value_type = ::_helpers::IteratorValueType_t<InputIterator_t>;
+	using hash_t = std::invoke_result_t<HashFunction, value_type>;
+
+	auto length = std::distance(begin, end);
+	assert(("Array length must be a power of 2", ((length - 1) & length) == 0));
+
+	auto [hashValues, hashTable] = hash_sequence< InputIterator_t, hash_t, value_type >(begin, end, hashFunction, comparator);
+
+	// Sort first half in ascending order
+	std::sort(std::execution::par_unseq, hashValues.begin(), hashValues.begin() + length,
+	          [&hashTable, &comparator](hash_t lhs, hash_t rhs)
+		{
+			return comparator(*hashTable[lhs], *hashTable[rhs]);
+		});
+
+	// Sort second half in descending order
+	std::sort(std::execution::par_unseq, hashValues.begin() + length, hashValues.end(),
+	          [&hashTable, &comparator](hash_t lhs, hash_t rhs)
+		{
+			return not comparator(*hashTable[lhs], *hashTable[rhs]);
+		});
+
+	bitonic_merge(hashValues, hashTable, 0, hashValues.size(), comparator);
+
+	placeElementsInCorrectPositions(begin, end, hashFunction, hashValues, hashTable);
+}
+
+template<class Hash_t, class Value_t, class Comparator>
+inline void Threading::bitonic_merge(std::vector<Hash_t>& hashValues,
+                                     std::unordered_map<Hash_t, Value_t *>& hashTable,
+                                     std::vector<Hash_t>::size_type low,
+                                     std::vector<Hash_t>::size_type cnt,
+                                     Comparator comparator)
+{
+	if (cnt <= 1)
+		return;
+	auto k = cnt / 2;
+	auto inplaceComparator = createInplaceComparator(comparator, hashTable);
+	std::vector<std::future<void> > results;
+	results.reserve(k);
+	for (auto i = low; i < low + k; i++)
+	{
+		results.push_back(std::async([&inplaceComparator, &hashValues, i, k](){inplaceComparator(hashValues[i], hashValues[i + k]);}));
+	}
+	for (auto &result : results)
+		result.get();
+	bitonic_merge(hashValues, hashTable, low, k, comparator);
+	bitonic_merge(hashValues, hashTable, low + k, k, comparator);
+}
+
+template <std::forward_iterator InputIterator_t, class HashFunction, class Comparator>
+inline void Threading::odd_even_sort(InputIterator_t begin, InputIterator_t end,
+                                     HashFunction hashFunction,
+                                     Comparator comparator)
+{
+    using value_type = ::_helpers::IteratorValueType_t<InputIterator_t>;
+    using hash_t = std::invoke_result_t<HashFunction, value_type>;
+
+    if (begin == end)
+        return;
+
+    auto [hashValues, hashTable] = hash_sequence< InputIterator_t, hash_t, value_type >(begin, end, hashFunction, comparator);
+
+    using size_type = decltype(hashValues.size());
+    size_type swapCount = 0;
+    auto inplaceComparator = createInplaceComparator(comparator, hashTable);
+
+    ThreadPool pool(std::thread::hardware_concurrency());
+    size_t numThreads = std::thread::hardware_concurrency();
+    size_t chunkSize = (hashValues.size() + numThreads - 1) / numThreads;
+
+    do
+    {
+        swapCount = 0;
+        std::vector<std::future<size_type>> results;
+
+        for (size_t chunkStart = 1; chunkStart < hashValues.size(); chunkStart += 2 * chunkSize)
+        {
+            results.push_back(pool.submit([chunkStart, chunkSize, &hashValues, &inplaceComparator]()
+            {
+                size_type localSwapCount = 0;
+                for (size_t i = chunkStart; i < std::min(chunkStart + 2*chunkSize, hashValues.size()); i += 2)
+                {
+                    if (i < hashValues.size() && inplaceComparator(hashValues[i - 1], hashValues[i]))
+                    {
+                        localSwapCount++;
+                    }
+                }
+                return localSwapCount;
+            }));
+        }
+
+        for (auto &result : results)
+            swapCount += result.get();
+
+        results.clear();
+
+        for (size_t chunkStart = 2; chunkStart < hashValues.size(); chunkStart += 2 * chunkSize)
+        {
+            results.push_back(pool.submit([chunkStart, chunkSize, &hashValues, &inplaceComparator]()
+            {
+                size_type localSwapCount = 0;
+                for (size_t i = chunkStart; i < std::min(chunkStart + 2*chunkSize, hashValues.size()); i += 2)
+                {
+                    if (i < hashValues.size() && inplaceComparator(hashValues[i - 1], hashValues[i]))
+                    {
+                        localSwapCount++;
+                    }
+                }
+                return localSwapCount;
+            }));
+        }
+
+        for (auto &result : results)
+            swapCount += result.get();
+
+        results.clear();
+    } while (swapCount > 0);
+
+    placeElementsInCorrectPositions(begin, end, hashFunction, hashValues, hashTable);
+}
 
 } // namespace s0m4b0dY
 
