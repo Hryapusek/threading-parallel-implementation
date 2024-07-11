@@ -86,10 +86,10 @@ public:
 	          >
 	void transform_non_back_inserter(InputIterator1_t begin1, InputIterator1_t end1, InputIterator2_t begin2, OutputIterator_t output, BinaryFunction &&binaryFunction);
 
-	template < std::forward_iterator InputIterator_t, class HashFunction = std::hash<::_helpers::IteratorValueType_t<InputIterator_t> >, class Comparator = std::less_equal<::_helpers::IteratorValueType_t<InputIterator_t> > >
+	template < std::forward_iterator InputIterator_t, class HashFunction = std::hash<::_helpers::IteratorValueType_t<InputIterator_t> >, class Comparator = std::less<::_helpers::IteratorValueType_t<InputIterator_t> > >
 	void bitonic_sort(InputIterator_t begin, InputIterator_t end, HashFunction hashFunction = HashFunction(), Comparator comparator = Comparator());
 
-	template < std::forward_iterator InputIterator_t, class HashFunction = std::hash<::_helpers::IteratorValueType_t<InputIterator_t> >, class Comparator = std::less_equal<::_helpers::IteratorValueType_t<InputIterator_t> > >
+	template < std::forward_iterator InputIterator_t, class HashFunction = std::hash<::_helpers::IteratorValueType_t<InputIterator_t> >, class Comparator = std::less<::_helpers::IteratorValueType_t<InputIterator_t> > >
 	void odd_even_sort(InputIterator_t begin, InputIterator_t end, HashFunction hashFunction = HashFunction(), Comparator comparator = Comparator());
 
 private:
@@ -396,10 +396,21 @@ inline void Threading::bitonic_sort(InputIterator_t begin, InputIterator_t end, 
 
 	auto [hashValues, hashTable] = hash_sequence< InputIterator_t, hash_t, value_type >(begin, end, hashFunction, comparator);
 
+	// Verify hashTable construction
+	for (const auto& hash : hashValues) {
+		auto it = hashTable.find(hash);
+		if (it == hashTable.end()) {
+			std::cerr << "Error: Element with hash " << hash << " not found in hashTable!" << std::endl;
+			// Handle error or assert to halt execution
+		}
+	}
+
 	// Sort first half in ascending order
-	std::sort(std::execution::par_unseq, hashValues.begin(), hashValues.begin() + length / 2,
-	          [&hashTable, &comparator](hash_t lhs, hash_t rhs)
+	std::sort(std::execution::par_unseq, hashValues.begin(), hashValues.begin() + (length / 2),
+	          [&hashTable, &comparator](const hash_t& lhs, const hash_t& rhs)
 		{
+			if (lhs == rhs)
+				return false;
 			return comparator(*hashTable.find(lhs)->second, *hashTable.find(rhs)->second);
 		});
 
@@ -407,6 +418,8 @@ inline void Threading::bitonic_sort(InputIterator_t begin, InputIterator_t end, 
 	std::sort(std::execution::par_unseq, hashValues.begin() + length / 2, hashValues.end(),
 	          [&hashTable, &comparator](hash_t lhs, hash_t rhs)
 		{
+			if (lhs == rhs)
+				return false;
 			return not comparator(*hashTable.find(lhs)->second, *hashTable.find(rhs)->second);
 		});
 
